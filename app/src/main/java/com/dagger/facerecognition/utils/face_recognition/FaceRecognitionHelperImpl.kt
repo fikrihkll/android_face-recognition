@@ -43,7 +43,7 @@ class FaceRecognitionHelperImpl
 constructor(): FaceRecognitionHelper {
 
     companion object {
-        const val modelName = "high-pre-model.tflite"
+        const val modelName = "mobile_face_net.tflite"
         
         const val OUTPUT_SIZE = 192
         const val INPUT_SIZE = 112
