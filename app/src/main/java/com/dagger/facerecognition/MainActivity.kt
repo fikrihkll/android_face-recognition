@@ -6,8 +6,6 @@ import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.Matrix
-import android.net.Uri
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -17,32 +15,22 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
-import androidx.camera.core.resolutionselector.AspectRatioStrategy
-import androidx.camera.core.resolutionselector.ResolutionSelector
-import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.mlkit.vision.MlKitAnalyzer
-import androidx.camera.view.CameraController
-import androidx.camera.view.CameraController.COORDINATE_SYSTEM_VIEW_REFERENCED
-import androidx.camera.view.LifecycleCameraController
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
-import androidx.lifecycle.ReportFragment.Companion.reportFragment
 import androidx.lifecycle.lifecycleScope
-import androidx.room.Room
-import com.dagger.facerecognition.cache.CacheDatabaseManager
 import com.dagger.facerecognition.databinding.ActivityMainBinding
 import com.dagger.facerecognition.entities.ui.RequestError
 import com.dagger.facerecognition.entities.ui.RequestSuccess
+import com.dagger.facerecognition.utils.BitmapUtils
+import com.dagger.facerecognition.utils.face_detection.FaceDetectionHelper
 import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionCallback
 import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionError
 import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionHelper
@@ -53,13 +41,10 @@ import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionSuccess
 import com.dagger.facerecognition.viewmodels.MainViewModel
 import com.google.mlkit.vision.face.Face
 import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetectorOptions
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -80,7 +65,8 @@ class MainActivity :
     }
 
     @Inject
-    lateinit var faceRecognitionHelper: FaceRecognitionHelper
+    lateinit var faceDetection: FaceDetectionHelper
+    lateinit var faceRecognitionHelper: FaceRecognitionHelperImpl
     private lateinit var binding: ActivityMainBinding
     private val viewModel: MainViewModel by viewModels()
 
@@ -284,7 +270,7 @@ class MainActivity :
                 override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
                     binding.captureInfoTextView.text = "Okay, you're good"
                     outputFileResults.savedUri?.let {
-                        faceRecognitionHelper.getBitmapFromUri(it, this@MainActivity) { bitmap ->
+                        BitmapUtils.getBitmapFromUri(it, this@MainActivity) { bitmap ->
                             binding.facePreview.setImageBitmap(bitmap)
                             binding.captureInfoTextView.text = ""
                             if (register) {
@@ -354,12 +340,12 @@ class MainActivity :
                             )
                         }
                         bitmapBuffer.copyPixelsFromBuffer(image.planes[0].buffer)
-                        val rotatedBitmap = faceRecognitionHelper.rotateBitmap(
+                        val rotatedBitmap = BitmapUtils.rotateBitmap(
                             bitmapBuffer.copy(Bitmap.Config.ARGB_8888, true), -90, true, false
                         )
                         image.close()
                         if (!faceRecognitionHelper.isProcessingDetection()) {
-                            faceRecognitionHelper.detectFace(rotatedBitmap)
+//                            faceDetection.detectFace(rotatedBitmap)
                         }
                     }
                 }
@@ -388,11 +374,11 @@ class MainActivity :
 
     private fun detectFace(bitmap: Bitmap) {
         binding.progressBar.isVisible = true
-        faceRecognitionHelper.recognizeFace(
-            context = this@MainActivity,
-            image = bitmap,
-            registeredList = viewModel.faceList
-        )
+//        faceRecognitionHelper.recognizeFace(
+//            context = this@MainActivity,
+//            image = bitmap,
+//            registeredList = viewModel.faceList
+//        )
     }
 
 }

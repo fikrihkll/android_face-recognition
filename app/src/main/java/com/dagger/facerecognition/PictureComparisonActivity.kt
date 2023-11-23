@@ -2,7 +2,6 @@ package com.dagger.facerecognition
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.net.Uri
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
@@ -12,6 +11,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import com.dagger.facerecognition.databinding.ActivityPictureComparisonBinding
+import com.dagger.facerecognition.entities.ui.ModelInfo
+import com.dagger.facerecognition.utils.BitmapUtils
+import com.dagger.facerecognition.utils.face_detection.FaceDetectionMLKit
+import com.dagger.facerecognition.utils.face_recognition.FaceNetRecognition
 import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionCallback
 import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionHelper
 import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionNotFound
@@ -33,8 +36,15 @@ class PictureComparisonActivity : AppCompatActivity(),
     FaceRecognitionCallback,
     CoroutineScope {
 
-    @Inject
-    lateinit var faceRecognitionHelper: FaceRecognitionHelper
+    lateinit var faceRecognitionHelper: FaceNetRecognition
+    private var faceNetModel = ModelInfo(
+        "FaceNet" ,
+        "facenet.tflite" ,
+        0.4f ,
+        10f ,
+        128 ,
+        160
+    )
 
     private val viewModel: MainViewModel by viewModels()
 
@@ -48,7 +58,7 @@ class PictureComparisonActivity : AppCompatActivity(),
         if (activityResult.resultCode == RESULT_OK) {
             activityResult.data?.data?.let {
                 if (image1 == null) {
-                    faceRecognitionHelper.getBitmapFromUri(it, this@PictureComparisonActivity) { bitmap ->
+                    BitmapUtils.getBitmapFromUri(it, this@PictureComparisonActivity) { bitmap ->
                         image1 = bitmap
                         binding.face1ImageView.setImageBitmap(bitmap)
 //                        faceRecognitionHelper.detectFace(
@@ -57,7 +67,7 @@ class PictureComparisonActivity : AppCompatActivity(),
                         pickImage()
                     }
                 } else if (image2 == null) {
-                    faceRecognitionHelper.getBitmapFromUri(it, this@PictureComparisonActivity) { bitmap ->
+                    BitmapUtils.getBitmapFromUri(it, this@PictureComparisonActivity) { bitmap ->
                         image2 = bitmap
                         binding.face2ImageView.setImageBitmap(bitmap)
                         Log.i("FKR-CHECK", "PASSED")
@@ -68,7 +78,7 @@ class PictureComparisonActivity : AppCompatActivity(),
                         )
                     }
                 } else {
-                    faceRecognitionHelper.getBitmapFromUri(it, this@PictureComparisonActivity) { bitmap ->
+                    BitmapUtils.getBitmapFromUri(it, this@PictureComparisonActivity) { bitmap ->
                         image1 = bitmap
                         binding.face1ImageView.setImageBitmap(bitmap)
                         image2 = null
@@ -84,7 +94,11 @@ class PictureComparisonActivity : AppCompatActivity(),
         binding = ActivityPictureComparisonBinding.inflate(layoutInflater)
         setContentView(binding.root)
         job = Job()
-        faceRecognitionHelper.initialize(this@PictureComparisonActivity, coroutineScope = this)
+
+        faceRecognitionHelper = FaceNetRecognition(this@PictureComparisonActivity, modelInfo = faceNetModel)
+        faceRecognitionHelper.coroutineScope = this
+        faceRecognitionHelper.faceDetectionHelper = FaceDetectionMLKit()
+        faceRecognitionHelper.faceDetectionHelper.initialize()
         faceRecognitionHelper.setListener(this)
 
         binding.imagePickerButton.setOnClickListener(this)

@@ -1,5 +1,7 @@
 package com.dagger.facerecognition.modules
 
+import com.dagger.facerecognition.utils.face_detection.FaceDetectionHelper
+import com.dagger.facerecognition.utils.face_detection.FaceDetectionMLKit
 import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionHelper
 import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionHelperImpl
 import dagger.Binds
@@ -15,5 +17,9 @@ interface FaceRecognitionModule {
     @ActivityScoped
     @Binds
     fun provideFaceRecognitionHandler(impl: FaceRecognitionHelperImpl): FaceRecognitionHelper
+
+    @ActivityScoped
+    @Binds
+    fun provideFaceDetectionHelper(impl: FaceDetectionMLKit): FaceDetectionHelper
 
 }
