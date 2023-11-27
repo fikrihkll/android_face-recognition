@@ -7,9 +7,12 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.util.Log
+import androidx.exifinterface.media.ExifInterface
 import com.google.mlkit.vision.face.Face
 
 object BitmapUtils {
@@ -19,11 +22,29 @@ object BitmapUtils {
             context.contentResolver.openFileDescriptor(uri, "r")
         val fileDescriptor = parcelFileDescriptor?.fileDescriptor
         var image = BitmapFactory.decodeFileDescriptor(fileDescriptor)
-        parcelFileDescriptor?.close()
-        if (image.width > image.height) {
-            image = rotateBitmap(image, -90, true, false)
+        fileDescriptor?.let {
+            val exif = ExifInterface(fileDescriptor)
+
+            when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, 1)) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> {
+                    Log.i("FKR-CHECK", "ORIENTATION 90")
+                    image = rotateBitmap(image, 90, true, false)
+                }
+                ExifInterface.ORIENTATION_ROTATE_270 -> {
+                    Log.i("FKR-CHECK", "ORIENTATION 270")
+                    image = rotateBitmap(image, -90, true, false)
+                }
+                ExifInterface.ORIENTATION_ROTATE_180 -> {
+                    Log.i("FKR-CHECK", "ORIENTATION 180")
+                    image = rotateBitmap(image, 180, true, false)
+                }
+            }
+            result.invoke(image)
+        } ?: run {
+            result.invoke(image)
         }
-        result.invoke(image)
+        parcelFileDescriptor?.close()
+
     }
 
     fun rotateBitmap(bitmap: Bitmap, rotationDegrees: Int, flipX: Boolean, flipY: Boolean): Bitmap {
@@ -51,13 +72,18 @@ object BitmapUtils {
 
     fun cropImageFaceBitmapWithoutResize(image: Bitmap, face: Face): Bitmap? {
         val boundingBox = RectF(face.boundingBox)
-        val croppedFace = getCropBitmapByBoundingBox(image, boundingBox) ?: run {
+        val croppedFace = getCropBitmapByBoundingBox(image.copy(Bitmap.Config.ARGB_8888, true), boundingBox) ?: run {
             return null
         }
         return croppedFace
     }
 
-    fun getCropBitmapByBoundingBox(source: Bitmap, cropRectF: RectF): Bitmap? {
+    fun cropImageFaceBitmapWithoutResize(image: Bitmap, rectangle: Rect): Bitmap {
+        val boundingBox = RectF(rectangle)
+        return getCropBitmapByBoundingBox(image.copy(Bitmap.Config.ARGB_8888, true), boundingBox)
+    }
+
+    fun getCropBitmapByBoundingBox(source: Bitmap, cropRectF: RectF): Bitmap {
         val resultBitmap = Bitmap.createBitmap(
             cropRectF.width().toInt(),
             cropRectF.height().toInt(),

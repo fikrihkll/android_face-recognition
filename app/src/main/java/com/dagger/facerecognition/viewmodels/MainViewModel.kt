@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dagger.facerecognition.entities.cache.CacheError
 import com.dagger.facerecognition.entities.ui.Recognition
-import com.dagger.facerecognition.entities.cache.CacheResult
 import com.dagger.facerecognition.entities.cache.CacheSuccess
 import com.dagger.facerecognition.entities.cache.RecognitionCache
 import com.dagger.facerecognition.entities.mapper.RecognitionMapper
@@ -21,7 +20,7 @@ import javax.inject.Inject
 class MainViewModel
 @Inject
 constructor(
-    private val faceRecognitionRepository: FaceRecognitionRepository
+    private val faceRecognitionRepository: FaceRecognitionRepository,
 ): ViewModel() {
 
     private val _faceRegistrationMutableLiveData: MutableLiveData<RequestResult<String>> = MutableLiveData()

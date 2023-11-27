@@ -25,23 +25,22 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
-import androidx.lifecycle.lifecycleScope
 import com.dagger.facerecognition.databinding.ActivityMainBinding
-import com.dagger.facerecognition.entities.ui.ModelInfo
+import com.dagger.facerecognition.entities.ui.FacePrediction
+import com.dagger.facerecognition.entities.ui.Recognition
 import com.dagger.facerecognition.entities.ui.RequestError
 import com.dagger.facerecognition.entities.ui.RequestSuccess
 import com.dagger.facerecognition.utils.BitmapUtils
+import com.dagger.facerecognition.utils.camera.CameraFrameListener
 import com.dagger.facerecognition.utils.camera.FrameAnalyser
-import com.dagger.facerecognition.utils.face_detection.FaceDetectionHelper
-import com.dagger.facerecognition.utils.face_recognition.FaceNetRecognition
-import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionHelperImpl
+import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionHelper
+import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionModel
+import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionResultListener
 import com.dagger.facerecognition.viewmodels.MainViewModel
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -53,27 +52,20 @@ import kotlin.coroutines.CoroutineContext
 class FaceNetActivity : AppCompatActivity(),
     View.OnClickListener,
     View.OnLongClickListener,
+    CameraFrameListener,
+    FaceRecognitionResultListener,
     CoroutineScope {
 
-    private val viewModel: MainViewModel by viewModels()
+    private val mainViewModel: MainViewModel by viewModels()
 
     @Inject
-    lateinit var faceDetectionHelper: FaceDetectionHelper
+    lateinit var faceRecognitionHelper: FaceRecognitionHelper
     private lateinit var binding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var job: Job
-    private lateinit var faceNetRecognition: FaceNetRecognition
 
-    private var faceNetModel = ModelInfo(
-        "FaceNet" ,
-        "facenet.tflite" ,
-        0.4f ,
-        10f ,
-        128 ,
-        160
-    )
+    private var faceRecognitionModel = FaceRecognitionModel.getModelInfo(FaceRecognitionModel.Type.FACE_NET)
     private var preview: Preview? = null
-    private var imageAnalyzer: ImageAnalysis? = null
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageCapture: ImageCapture? = null
@@ -92,8 +84,13 @@ class FaceNetActivity : AppCompatActivity(),
 
         job = Job()
         cameraExecutor = Executors.newSingleThreadExecutor()
-        faceNetRecognition = FaceNetRecognition(this@FaceNetActivity, faceNetModel)
-        faceDetectionHelper.initialize()
+        runOnUiThread {
+            faceRecognitionHelper.init(
+                coroutineScope = this,
+                modelInfo = faceRecognitionModel,
+                listener = this
+            )
+        }
 
         binding.registerButton.setOnClickListener(this)
         binding.registerButton.setOnLongClickListener(this)
@@ -105,7 +102,7 @@ class FaceNetActivity : AppCompatActivity(),
             true
         }
 
-        viewModel.getFaceList()
+        mainViewModel.getFaceList()
 
         requestPermission()
         observerLiveData()
@@ -119,7 +116,7 @@ class FaceNetActivity : AppCompatActivity(),
     override fun onLongClick(v: View?): Boolean {
         when (v?.id) {
             R.id.registerButton -> {
-                viewModel.deleteFace()
+                mainViewModel.deleteFace()
                 return true
             }
         }
@@ -129,14 +126,59 @@ class FaceNetActivity : AppCompatActivity(),
     override fun onClick(v: View?) {
         when (v?.id) {
             R.id.registerButton -> {
-//                takePicture(true)
-                takePicture(true)
+                takePicture()
             }
         }
     }
 
+    override fun onFrameReceived(image: Bitmap) {
+        if (binding.registerSwitch.isChecked) {
+            frameAnalyser.setProcessingDone()
+            return
+        }
+
+        runOnUiThread {
+            faceRecognitionHelper.recognizeFace(
+                frameBitmap = image,
+                registeredFace = mainViewModel.faceList.map { Pair(it.title, it.vector[0]) },
+                cosineThreshold = faceRecognitionModel.cosineThreshold,
+                l2Threshold = faceRecognitionModel.l2Threshold,
+                firstFaceOnly = true
+            )
+        }
+    }
+
+    override fun onFaceRecognized(result: List<FacePrediction>) {
+        Log.w("FKR-CHECK", "FACE REC")
+        frameAnalyser.setProcessingDone()
+
+        if (result.isNotEmpty()) {
+            updateUI(
+                """Success:
+                        
+                    ${
+                    result.joinToString { prediction ->
+                        "[Verified] ${prediction.label}: ${prediction.score}"
+                    }
+                }
+                    """.trimMargin()
+            )
+        } else {
+            updateUI(result = "No face detected")
+        }
+    }
+
+    override fun onFaceVectorExtracted(result: List<Recognition>) {
+        frameAnalyser.setProcessingDone()
+
+        if (result.isNotEmpty())
+            mainViewModel.registerFace(result.first().copy(title = binding.nameEditText.text.toString()))
+        else
+            updateUI(result = "No face detected")
+    }
+
     private fun observerLiveData() {
-        viewModel.faceRegistrationLiveData.observe(this) {
+        mainViewModel.faceRegistrationLiveData.observe(this) {
             binding.progressBar.isVisible = false
             when (it) {
                 is RequestSuccess -> {
@@ -150,6 +192,9 @@ class FaceNetActivity : AppCompatActivity(),
         }
     }
 
+    private fun updateUI(result: String) {
+        binding.logTextView.text = result
+    }
 
     private fun setUpCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
@@ -164,7 +209,6 @@ class FaceNetActivity : AppCompatActivity(),
         )
     }
 
-    // Declare and bind preview, capture and analysis use cases
     @SuppressLint("UnsafeOptInUsageError")
     private fun bindCameraUseCases() {
         // CameraProvider
@@ -179,11 +223,7 @@ class FaceNetActivity : AppCompatActivity(),
                 .setTargetRotation(binding.viewFinder.display.rotation)
                 .build()
 
-        val faceNetModel = FaceNetRecognition(
-            context = this@FaceNetActivity,
-            modelInfo = faceNetModel
-        )
-        frameAnalyser = FrameAnalyser(context = this, faceNetModel)
+        frameAnalyser = FrameAnalyser(this)
         val imageFrameAnalysis = ImageAnalysis.Builder()
             .setTargetResolution(Size( 480, 640 ))
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -209,7 +249,7 @@ class FaceNetActivity : AppCompatActivity(),
 
             preview?.setSurfaceProvider(binding.viewFinder.surfaceProvider)
         } catch (exc: Exception) {
-            Log.e(MainActivity.TAG, "Use case binding failed", exc)
+            Log.e("FKR-CHECK", "Use case binding failed", exc)
         }
     }
 
@@ -233,7 +273,7 @@ class FaceNetActivity : AppCompatActivity(),
         requestMultiplePermissions.launch(REQUIRED_PERMISSIONS.toTypedArray())
     }
 
-    private fun takePicture(register: Boolean) {
+    private fun takePicture() {
         val imageCapture = imageCapture ?: return
 
         val date = SimpleDateFormat(
@@ -278,22 +318,7 @@ class FaceNetActivity : AppCompatActivity(),
     }
 
     private fun register(bitmap: Bitmap) {
-        Log.i("FKR-CHECK", "Register is on progress")
-        launch(Dispatchers.Main) {
-            val faces = faceDetectionHelper.findFace(bitmap)
-            if (faces.isNotEmpty()) {
-                val croppedFace = BitmapUtils.cropImageFaceBitmapWithoutResize(bitmap.copy(Bitmap.Config.ARGB_8888, true), faces.first())
-                val faceEmbedding = faceNetRecognition.getFaceEmbedding(croppedFace!!)
-                frameAnalyser.faceList.add(Pair(binding.nameEditText.text.toString(), faceEmbedding[0]))
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@FaceNetActivity, "Success", Toast.LENGTH_LONG).show()
-                }
-            } else {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@FaceNetActivity, "fail", Toast.LENGTH_LONG).show()
-                }
-            }
-        }
+        faceRecognitionHelper.getFaceVector(bitmap)
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {

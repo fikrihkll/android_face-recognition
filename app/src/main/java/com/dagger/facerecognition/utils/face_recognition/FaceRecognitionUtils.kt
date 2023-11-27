@@ -1,40 +1,24 @@
 package com.dagger.facerecognition.utils.face_recognition
 
 import android.graphics.Bitmap
+import android.util.Log
 import com.dagger.facerecognition.entities.ui.Recognition
 import org.apache.commons.math3.linear.ArrayRealVector
 import org.apache.commons.math3.linear.RealVector
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 object FaceRecognitionUtils {
-    private fun cosineSimilarity(vector1: FloatArray, vector2: FloatArray): Double {
-        val v1: RealVector = ArrayRealVector(vector1.map { it.toDouble() }.toDoubleArray())
-        val v2: RealVector = ArrayRealVector(vector2.map { it.toDouble() }.toDoubleArray())
-
-        // Compute cosine similarity
-        return v1.dotProduct(v2) / (v1.norm * v2.norm)
-    }
-
-    fun cosineSimilarityArray(array1: Array<FloatArray>, array2: Array<FloatArray>): Double {
-        require(array1.size == array2.size) { "Arrays must have the same size" }
-
-        var totalSimilarity = 0.0
-
-        for (i in array1.indices) {
-            require(array1[i].size == array2[i].size) { "Inner arrays must have the same size" }
-
-            val similarity = cosineSimilarity(array1[i], array2[i])
-            totalSimilarity += similarity
-        }
-
-        return totalSimilarity / array1.size
-    }
 
     fun getImageByteBuffer(imageBitmap: Bitmap): ByteBuffer {
-        val imageBuffer = ByteBuffer.allocateDirect(1 * FaceRecognitionHelperImpl.INPUT_SIZE * FaceRecognitionHelperImpl.INPUT_SIZE * 3 * 4)
+        val imageMean = 128.0f
+        val imageSTD = 128.0f
+        val mobileFaceNetInputSize = 112
+        val imageBuffer = ByteBuffer.allocateDirect(1 * mobileFaceNetInputSize * mobileFaceNetInputSize * 3 * 4)
         imageBuffer.order(ByteOrder.nativeOrder())
-        val intValues = IntArray(FaceRecognitionHelperImpl.INPUT_SIZE * FaceRecognitionHelperImpl.INPUT_SIZE)
+        val intValues = IntArray(mobileFaceNetInputSize * mobileFaceNetInputSize)
         imageBitmap.getPixels(
             intValues,
             0,
@@ -46,40 +30,90 @@ object FaceRecognitionUtils {
         )
         imageBuffer.rewind()
         val isModelQuantized = false
-        for (i in 0 until FaceRecognitionHelperImpl.INPUT_SIZE) {
-            for (j in 0 until FaceRecognitionHelperImpl.INPUT_SIZE) {
-                val pixelValue: Int = intValues.get(i * FaceRecognitionHelperImpl.INPUT_SIZE + j)
+        for (i in 0 until mobileFaceNetInputSize) {
+            for (j in 0 until mobileFaceNetInputSize) {
+                val pixelValue: Int = intValues.get(i * mobileFaceNetInputSize + j)
                 if (isModelQuantized) {
                     // Quantized model
                     imageBuffer.put((pixelValue shr 16 and 0xFF).toByte())
                     imageBuffer.put((pixelValue shr 8 and 0xFF).toByte())
                     imageBuffer.put((pixelValue and 0xFF).toByte())
                 } else { // Float model
-                    imageBuffer.putFloat(((pixelValue shr 16 and 0xFF) - FaceRecognitionHelperImpl.IMAGE_MEAN) / FaceRecognitionHelperImpl.IMAGE_STD)
-                    imageBuffer.putFloat(((pixelValue shr 8 and 0xFF) - FaceRecognitionHelperImpl.IMAGE_MEAN) / FaceRecognitionHelperImpl.IMAGE_STD)
-                    imageBuffer.putFloat(((pixelValue and 0xFF) - FaceRecognitionHelperImpl.IMAGE_MEAN) / FaceRecognitionHelperImpl.IMAGE_STD)
+                    imageBuffer.putFloat(((pixelValue shr 16 and 0xFF) - imageMean) / imageSTD)
+                    imageBuffer.putFloat(((pixelValue shr 8 and 0xFF) - imageMean) / imageSTD)
+                    imageBuffer.putFloat(((pixelValue and 0xFF) - imageMean) / imageSTD)
                 }
             }
         }
         return imageBuffer
     }
 
-    fun findResembledFace(faceVector: Array<FloatArray>, registeredList: List<Recognition>): Triple<Boolean, Recognition?, String> {
-        val recognition = mutableListOf<Recognition>()
-        var similarityLogs = ""
-        for (faceData in registeredList) {
-            val similarity = cosineSimilarityArray(faceVector, faceData.vector)
-            similarityLogs += "${faceData.title}: ${similarity}\n"
-            if (similarity >= 0.8) {
-                recognition.add(faceData.copy(similarity = similarity))
+    fun computeWithL2Norm(x1 : FloatArray, x2 : FloatArray): Float {
+        return sqrt(x1.mapIndexed{ i, xi -> (xi - x2[i]).pow(2) }.sum())
+    }
+
+    fun computeWithCosineSimilarity(x1 : FloatArray, x2: FloatArray): Float {
+        val mag1 = sqrt(x1.map { it * it }.sum())
+        val mag2 = sqrt(x2.map { it * it }.sum())
+        val dot = x1.mapIndexed{ i, xi -> xi * x2[i] }.sum()
+        return dot / (mag1 * mag2)
+    }
+
+    fun calculateScore(metricToBeUsed: String = "l2", subject: FloatArray,  faceList: List<Pair<String, FloatArray>>): HashMap<String, ArrayList<Float>> {
+        val nameScoreHashmap = HashMap<String, ArrayList<Float>>()
+
+        for (i in faceList.indices) {
+            if (nameScoreHashmap[faceList[i].first] == null) {
+                val scores = ArrayList<Float>()
+                if (metricToBeUsed == "cosine") {
+                    scores.add(computeWithCosineSimilarity(subject, faceList[i].second))
+                }
+                else {
+                    scores.add(computeWithL2Norm(subject, faceList[i].second))
+                }
+                nameScoreHashmap[faceList[i].first] = scores
+            } else {
+                if (metricToBeUsed == "cosine") {
+                    nameScoreHashmap[faceList[i].first]?.add(computeWithCosineSimilarity(subject, faceList[i].second))
+                }
+                else {
+                    nameScoreHashmap[faceList[i].first]?.add(computeWithL2Norm(subject, faceList[i].second))
+                }
             }
         }
-        return if (recognition.isNotEmpty()) {
-            val result = recognition.maxBy { it.similarity }
-            Triple(true, result, similarityLogs)
+        return nameScoreHashmap
+    }
+
+    fun getPersonNameFromAverageScore(
+        metricToBeUsed:String,
+        nameScoreHashmap: HashMap<String, ArrayList<Float>>,
+        cosineThreshold: Float,
+        l2Threshold: Float
+    ): Pair<String, Double> {
+        val avgScores = nameScoreHashmap.values.map { scores -> scores.toFloatArray().average() }
+        Log.i("FKR-CHECK", "Average score for each user : $nameScoreHashmap")
+
+        val names = nameScoreHashmap.keys.toTypedArray()
+        nameScoreHashmap.clear()
+        val bestAvgScore: Double
+        val bestScoreUserName: String = if (metricToBeUsed == "cosine") {
+            bestAvgScore = avgScores.maxOrNull() ?: 0.0
+            if (bestAvgScore > cosineThreshold) {
+                names[avgScores.indexOf(bestAvgScore)]
+            }
+            else {
+                "Unknown"
+            }
         } else {
-            Triple(false, null, similarityLogs)
+            bestAvgScore = avgScores.minOrNull() ?: 0.0
+            if (bestAvgScore > l2Threshold ) {
+                "Unknown"
+            }
+            else {
+                names[avgScores.indexOf(bestAvgScore)]
+            }
         }
+        return Pair(bestScoreUserName, bestAvgScore)
     }
 
 }

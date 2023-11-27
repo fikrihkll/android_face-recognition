@@ -1,225 +1,60 @@
 package com.dagger.facerecognition.utils.camera;
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.graphics.Bitmap
-import android.util.Log
+import android.media.Image
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import com.dagger.facerecognition.entities.ui.FacePrediction
 import com.dagger.facerecognition.utils.BitmapUtils
-import com.dagger.facerecognition.utils.face_recognition.FaceNetRecognition
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.face.Face
-import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetectorOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.pow
-import kotlin.math.sqrt
 
-// Analyser class to process frames and produce detections.
-class FrameAnalyser(context: Context,
-//                     private var boundingBoxOverlay: BoundingBoxOverlay,
-                     private var model: FaceNetRecognition
-                     ) : ImageAnalysis.Analyzer {
+class FrameAnalyser(
+    private val listener: CameraFrameListener
+): ImageAnalysis.Analyzer {
 
-    private val realTimeOpts = FaceDetectorOptions.Builder()
-            .setPerformanceMode( FaceDetectorOptions.PERFORMANCE_MODE_FAST )
-            .build()
-    private val detector = FaceDetection.getClient(realTimeOpts)
-
-    private val nameScoreHashmap = HashMap<String,ArrayList<Float>>()
-    private var subject = FloatArray( model.embeddingDim )
-
-    // Used to determine whether the incoming frame should be dropped or processed.
     private var isProcessing = false
-
-    // Store the face embeddings in a ( String , FloatArray ) ArrayList.
-    // Where String -> name of the person and FloatArray -> Embedding of the face.
-    var faceList = ArrayList<Pair<String,FloatArray>>()
-
-//    private val maskDetectionModel = MaskDetectionModel( context )
-    private var t1 : Long = 0L
-
-    // <-------------- User controls --------------------------->
-
-    // Use any one of the two metrics, "cosine" or "l2"
-    private val metricToBeUsed = "l2"
-
-    // Use this variable to enable/disable mask detection.
-    private val isMaskDetectionOn = true
-
-    // <-------------------------------------------------------->
-
-
-    init {
-//        boundingBoxOverlay.drawMaskLabel = isMaskDetectionOn
-    }
-
-
+    private var currentImageProxy: ImageProxy? = null
 
     @SuppressLint("UnsafeOptInUsageError")
     override fun analyze(image: ImageProxy) {
-        // If the previous frame is still being processed, then skip this frame
-        if ( isProcessing || faceList.size == 0 ) {
+        if (isProcessing) {
             image.close()
             return
-        }
-        else {
+        } else {
             isProcessing = true
+            currentImageProxy = image
 
-            // Rotated bitmap for the FaceNet model
-            val cameraXImage = image.image!!
-            var frameBitmap = Bitmap.createBitmap(cameraXImage.width, cameraXImage.height, Bitmap.Config.ARGB_8888)
-            frameBitmap.copyPixelsFromBuffer(image.planes[0].buffer)
-            frameBitmap = BitmapUtils.rotateBitmap(frameBitmap, image.imageInfo.rotationDegrees, false, false)
-            //val frameBitmap = BitmapUtils.imageToBitmap( image.image!! , image.imageInfo.rotationDegrees )
-
-            // Configure frameHeight and frameWidth for output2overlay transformation matrix.
-//            if ( !boundingBoxOverlay.areDimsInit ) {
-//                boundingBoxOverlay.frameHeight = frameBitmap.height
-//                boundingBoxOverlay.frameWidth = frameBitmap.width
-//            }
-
-            val inputImage = InputImage.fromBitmap( frameBitmap , 0 )
-            detector.process(inputImage)
-                .addOnSuccessListener { faces ->
-                    CoroutineScope( Dispatchers.Default ).launch {
-                        runModel(faces , frameBitmap)
-                    }
-                }
-                .addOnCompleteListener {
-                    image.close()
-                }
-        }
-    }
-
-
-    private suspend fun runModel(faces : List<Face>, cameraFrameBitmap : Bitmap){
-        withContext( Dispatchers.Main ) {
-            t1 = System.currentTimeMillis()
-            val predictions = ArrayList<FacePrediction>()
-            for (face in faces) {
-                try {
-                    // Crop the frame using face.boundingBox.
-                    // Convert the cropped Bitmap to a ByteBuffer.
-                    // Finally, feed the ByteBuffer to the FaceNet model.
-                    val croppedBitmap = BitmapUtils.cropImageFaceBitmapWithoutResize(cameraFrameBitmap, face)
-                    subject = model.getFaceEmbedding(croppedBitmap!!)[0]
-
-                    // Perform face mask detection on the cropped frame Bitmap.
-//                    var maskLabel = ""
-//                    if ( isMaskDetectionOn ) {
-//                        maskLabel = maskDetectionModel.detectMask( croppedBitmap )
-//                    }
-
-                    // Continue with the recognition if the user is not wearing a face mask
-                    if (/*maskLabel == maskDetectionModel.NO_MASK*/true) {
-                        // Perform clustering ( grouping )
-                        // Store the clusters in a HashMap. Here, the key would represent the 'name'
-                        // of that cluster and ArrayList<Float> would represent the collection of all
-                        // L2 norms/ cosine distances.
-                        for ( i in 0 until faceList.size ) {
-                            // If this cluster ( i.e an ArrayList with a specific key ) does not exist,
-                            // initialize a new one.
-                            if ( nameScoreHashmap[ faceList[ i ].first ] == null ) {
-                                // Compute the L2 norm and then append it to the ArrayList.
-                                val p = ArrayList<Float>()
-                                if ( metricToBeUsed == "cosine" ) {
-                                    p.add( cosineSimilarity( subject , faceList[ i ].second ) )
-                                }
-                                else {
-                                    p.add( L2Norm( subject , faceList[ i ].second ) )
-                                }
-                                nameScoreHashmap[ faceList[ i ].first ] = p
-                            }
-                            // If this cluster exists, append the L2 norm/cosine score to it.
-                            else {
-                                if ( metricToBeUsed == "cosine" ) {
-                                    nameScoreHashmap[faceList[ i ].first]?.add( cosineSimilarity( subject , faceList[ i ].second ) )
-                                }
-                                else {
-                                    nameScoreHashmap[faceList[ i ].first]?.add( L2Norm( subject , faceList[ i ].second ) )
-                                }
-                            }
-                        }
-
-                        // Compute the average of all scores norms for each cluster.
-                        val avgScores = nameScoreHashmap.values.map { scores -> scores.toFloatArray().average() }
-                        Log.i("FKR-CHECK", "Average score for each user : $nameScoreHashmap")
-
-                        val names = nameScoreHashmap.keys.toTypedArray()
-                        nameScoreHashmap.clear()
-
-                        // Calculate the minimum L2 distance from the stored average L2 norms.
-                        val bestScoreUserName: String = if ( metricToBeUsed == "cosine" ) {
-                            // In case of cosine similarity, choose the highest value.
-                            if ( avgScores.maxOrNull()!! > model.modelInfo.cosineThreshold ) {
-                                names[ avgScores.indexOf( avgScores.maxOrNull()!! ) ]
-                            }
-                            else {
-                                "Unknown"
-                            }
-                        } else {
-                            // In case of L2 norm, choose the lowest value.
-                            if ( avgScores.minOrNull()!! > model.modelInfo.l2Threshold ) {
-                                "Unknown"
-                            }
-                            else {
-                                names[ avgScores.indexOf( avgScores.minOrNull()!! ) ]
-                            }
-                        }
-                        Log.i("FKR-CHECK",  "Person identified as $bestScoreUserName")
-                        predictions.add(
-                            FacePrediction(
-                                face.boundingBox,
-                                bestScoreUserName
-                            )
-                        )
-                    }
-//                    else {
-//                        // Inform the user to remove the mask
-//                        predictions.add(
-//                            Prediction(
-//                                face.boundingBox,
-//                                "Please remove the mask" ,
-//                                maskLabel
-//                            )
-//                        )
-//                    }
-                }
-                catch ( e : Exception ) {
-                    // If any exception occurs with this box and continue with the next boxes.
-                    Log.e( "Model" , "Exception in FrameAnalyser : ${e.message}" )
-                    continue
-                }
-                Log.e( "Performance" , "Inference time -> ${System.currentTimeMillis() - t1}")
-            }
-            withContext( Dispatchers.Main ) {
-                // Clear the BoundingBoxOverlay and set the new results ( boxes ) to be displayed.
-//                boundingBoxOverlay.faceBoundingBoxes = predictions
-//                boundingBoxOverlay.invalidate()
-                isProcessing = false
+            image.image?.let { imageFromProxy ->
+                processBitmap(imageFromProxy)
+            } ?: run {
+                setProcessingDone()
             }
         }
     }
 
-
-    // Compute the L2 norm of ( x2 - x1 )
-    private fun L2Norm( x1 : FloatArray, x2 : FloatArray ) : Float {
-        return sqrt( x1.mapIndexed{ i , xi -> (xi - x2[ i ]).pow( 2 ) }.sum() )
+    private fun processBitmap(imageFromProxy: Image) {
+        currentImageProxy?.let { image ->
+            CoroutineScope(Dispatchers.IO).launch {
+                var frameBitmap = Bitmap.createBitmap(imageFromProxy.width, imageFromProxy.height, Bitmap.Config.ARGB_8888)
+                frameBitmap.copyPixelsFromBuffer(image.planes[0].buffer)
+                frameBitmap = BitmapUtils.rotateBitmap(frameBitmap, image.imageInfo.rotationDegrees, false, false)
+                listener.onFrameReceived(frameBitmap)
+            }
+        }
     }
 
-
-    // Compute the cosine of the angle between x1 and x2.
-    private fun cosineSimilarity( x1 : FloatArray , x2 : FloatArray ) : Float {
-        val mag1 = sqrt( x1.map { it * it }.sum() )
-        val mag2 = sqrt( x2.map { it * it }.sum() )
-        val dot = x1.mapIndexed{ i , xi -> xi * x2[ i ] }.sum()
-        return dot / (mag1 * mag2)
+    fun setProcessingDone() {
+        isProcessing = false
+        currentImageProxy?.close()
     }
+
+}
+
+interface CameraFrameListener {
+
+    fun onFrameReceived(image: Bitmap)
 
 }

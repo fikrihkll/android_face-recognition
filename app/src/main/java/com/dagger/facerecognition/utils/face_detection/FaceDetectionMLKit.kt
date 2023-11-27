@@ -11,7 +11,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import javax.inject.Inject
 import kotlin.coroutines.resume
 
-@ActivityScoped
 class FaceDetectionMLKit
 @Inject
 constructor(): FaceDetectionHelper {
