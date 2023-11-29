@@ -9,6 +9,7 @@ import android.widget.ArrayAdapter
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.isVisible
 import com.dagger.facerecognition.databinding.ActivityPictureComparisonBinding
 import com.dagger.facerecognition.utils.BitmapUtils
 import com.dagger.facerecognition.utils.face_recognition.FaceComparisonHelper
@@ -51,6 +52,7 @@ class PictureComparisonActivity : AppCompatActivity(),
                         image2 = bitmap
                         binding.face2ImageView.setImageBitmap(bitmap)
                         if (image1 != null && image2 != null)
+                            binding.comparisonProgress.isVisible = true
                             faceComparisonHelper.compareWithAllModels(
                                 image1!!,
                                 image2!!,
@@ -96,6 +98,7 @@ class PictureComparisonActivity : AppCompatActivity(),
     }
 
     override fun onComparingFinished(result: String) {
+        binding.comparisonProgress.isVisible = false
         binding.resultTextView.text = result
     }
 
