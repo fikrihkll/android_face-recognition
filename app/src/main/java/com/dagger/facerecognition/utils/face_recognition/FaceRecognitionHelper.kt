@@ -23,6 +23,10 @@ constructor(
     private val faceDetectionHelper: FaceDetectionHelper
 ) {
 
+    companion object {
+        const val TAG = "FaceRecognitionHelper"
+    }
+
     private lateinit var coroutineScope: CoroutineScope
     private lateinit var cpuDispatcher: CoroutineDispatcher
     private lateinit var listener: FaceRecognitionResultListener
@@ -34,12 +38,15 @@ constructor(
         modelInfo: ModelInfo,
         listener: FaceRecognitionResultListener
     ) {
-        Log.w("FKR-CHECK", "INIT INVOCATION CALLED")
         isModelReady = false
         this.listener = listener
         this.coroutineScope = coroutineScope
         this.modelInfo = modelInfo
         cpuDispatcher = Dispatchers.Default
+        faceRecognitionHelper.setModel(modelInfo)
+        faceDetectionHelper.init()
+        faceRecognitionHelper.init()
+        isModelReady = true
     }
 
     fun recognizeFace(
@@ -51,13 +58,7 @@ constructor(
         firstFaceOnly: Boolean = false
     ) {
         coroutineScope.launch(cpuDispatcher) {
-            if (!isModelReady) {
-                faceRecognitionHelper.setModel(modelInfo)
-                faceDetectionHelper.initialize()
-                faceRecognitionHelper.init()
-                isModelReady = true
-            }
-            if (registeredFace.isEmpty()) {
+            if (!isModelReady || registeredFace.isEmpty()) {
                 withContext(Dispatchers.Main) {
                     listener.onFaceRecognized(listOf())
                 }
@@ -93,7 +94,7 @@ constructor(
                         cosineThreshold,
                         l2Threshold
                     )
-                    Log.i("FKR-CHECK",  "Person identified as ${bestScoreUserName.first}")
+                    Log.i(TAG,  "Person identified as ${bestScoreUserName.first}")
                     predictions.add(
                         FacePrediction(
                             boundingBox = face.boundingBox,
@@ -102,10 +103,10 @@ constructor(
                         )
                     )
                     strFinal += "\n\nPerson identified as ${bestScoreUserName.first}"
-                    Log.i("FKR-CHECK",  "RECOGNITION RESULT:\n${strFinal}")
-                    Log.e( "Performance" , "Inference time -> ${System.currentTimeMillis() - t1}")
+                    Log.i(TAG,  "RECOGNITION RESULT:\n${strFinal}")
+                    Log.e(TAG , "[Performance] Inference time -> ${System.currentTimeMillis() - t1}")
                 } catch ( e : Exception ) {
-                    Log.e( "Model" , "Exception in FrameAnalyser : ${e.message}" )
+                    Log.e(TAG , "Exception in FrameAnalyser : ${e.message}" )
                     continue
                 }
             }
@@ -120,8 +121,11 @@ constructor(
         firstFaceOnly: Boolean = true
     ) {
         if (!isModelReady) {
-            listener.onFaceVectorExtracted(listOf())
-            return
+            faceRecognitionHelper.setModel(modelInfo)
+            faceDetectionHelper.init()
+            faceRecognitionHelper.init()
+            isModelReady = true
+            listener.onFaceRecognized(listOf())
         }
         coroutineScope.launch(cpuDispatcher) {
             val inputImage = InputImage.fromBitmap(frameBitmap , 0)
@@ -135,13 +139,12 @@ constructor(
                     BitmapUtils.cropImageFaceBitmapWithoutResize(frameBitmap, face)?.let {
                         val subject = faceRecognitionHelper.getFaceEmbedding(it)
                         recognitions.add(Recognition(id = UUID.randomUUID().toString(), title = "", vector = subject))
-                        Log.e( "Performance" , "Inference time -> ${System.currentTimeMillis() - t1}")
+                        Log.e(TAG , "[Performance] Inference time -> ${System.currentTimeMillis() - t1}")
                     }
                 } catch ( e : Exception ) {
-                    Log.e( "Model" , "Exception in FrameAnalyser : ${e.message}" )
+                    Log.e(TAG , "Exception in FrameAnalyser : ${e.message}" )
                     continue
                 }
-
             }
             withContext(Dispatchers.Main) {
                 listener.onFaceVectorExtracted(recognitions)
