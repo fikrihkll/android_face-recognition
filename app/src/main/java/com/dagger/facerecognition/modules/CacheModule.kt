@@ -28,4 +28,11 @@ object CacheModule {
         return cacheDatabaseManager.recognitionDao()
     }
 
+    @Provides
+    fun provideContext(
+        @ApplicationContext context: Context,
+    ): Context {
+        return context
+    }
+
 }
