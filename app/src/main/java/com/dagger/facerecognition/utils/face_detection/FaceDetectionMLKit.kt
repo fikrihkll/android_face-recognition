@@ -18,7 +18,7 @@ constructor(): FaceDetectionHelper {
     private lateinit var detector: FaceDetector
     private lateinit var faceDetectorOptions: FaceDetectorOptions
 
-    override fun initialize() {
+    override fun init() {
         // Initialize Face Detector
         faceDetectorOptions = FaceDetectorOptions.Builder()
             .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
