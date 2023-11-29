@@ -43,6 +43,10 @@ constructor(
         this.coroutineScope = coroutineScope
         this.modelInfo = modelInfo
         cpuDispatcher = Dispatchers.Default
+        faceRecognitionHelper.setModel(modelInfo)
+        faceDetectionHelper.init()
+        faceRecognitionHelper.init()
+        isModelReady = true
     }
 
     fun recognizeFace(
@@ -55,10 +59,6 @@ constructor(
     ) {
         coroutineScope.launch(cpuDispatcher) {
             if (!isModelReady) {
-                faceRecognitionHelper.setModel(modelInfo)
-                faceDetectionHelper.init()
-                faceRecognitionHelper.init()
-                isModelReady = true
                 withContext(Dispatchers.Main) {
                     listener.onFaceRecognized(listOf())
                 }
@@ -87,7 +87,9 @@ constructor(
             for (face in finalFaces) {
                 try {
                     val croppedBitmap = BitmapUtils.cropImageFaceBitmapWithoutResize(frameBitmap, face.boundingBox)
-                    val subject = faceRecognitionHelper.getFaceEmbedding(croppedBitmap)[0]
+                    val subject = withContext(Dispatchers.Main) {
+                        faceRecognitionHelper.getFaceEmbedding(croppedBitmap)[0]
+                    }
 
                     val nameScoreHashmap = FaceRecognitionUtils.calculateScore(subject = subject, faceList = registeredFace)
                     var strFinal = """
@@ -127,11 +129,8 @@ constructor(
         firstFaceOnly: Boolean = true
     ) {
         if (!isModelReady) {
-            faceRecognitionHelper.setModel(modelInfo)
-            faceDetectionHelper.init()
-            faceRecognitionHelper.init()
-            isModelReady = true
             listener.onFaceRecognized(listOf())
+            return
         }
         coroutineScope.launch(cpuDispatcher) {
             val inputImage = InputImage.fromBitmap(frameBitmap , 0)
@@ -143,7 +142,9 @@ constructor(
             for (face in finalFaces) {
                 try {
                     BitmapUtils.cropImageFaceBitmapWithoutResize(frameBitmap, face)?.let {
-                        val subject = faceRecognitionHelper.getFaceEmbedding(it)
+                        val subject = withContext(Dispatchers.Main) {
+                            faceRecognitionHelper.getFaceEmbedding(it)
+                        }
                         recognitions.add(Recognition(id = UUID.randomUUID().toString(), title = "", vector = subject))
                         Log.e(TAG , "[Performance] Inference time -> ${System.currentTimeMillis() - t1}")
                     }
