@@ -12,6 +12,7 @@ import com.dagger.facerecognition.entities.ui.RequestError
 import com.dagger.facerecognition.entities.ui.RequestResult
 import com.dagger.facerecognition.entities.ui.RequestSuccess
 import com.dagger.facerecognition.repositories.FaceRecognitionRepository
+import com.dagger.facerecognition.utils.BoostHelper
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -20,6 +21,7 @@ import javax.inject.Inject
 class MainViewModel
 @Inject
 constructor(
+    private val boostHelper: BoostHelper,
     private val faceRecognitionRepository: FaceRecognitionRepository,
 ): ViewModel() {
 
