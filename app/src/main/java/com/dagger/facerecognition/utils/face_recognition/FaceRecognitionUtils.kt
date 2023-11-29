@@ -2,15 +2,14 @@ package com.dagger.facerecognition.utils.face_recognition
 
 import android.graphics.Bitmap
 import android.util.Log
-import com.dagger.facerecognition.entities.ui.Recognition
-import org.apache.commons.math3.linear.ArrayRealVector
-import org.apache.commons.math3.linear.RealVector
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.pow
 import kotlin.math.sqrt
 
 object FaceRecognitionUtils {
+
+    const val TAG = "FaceRecognitionUtils"
 
     fun getImageByteBuffer(imageBitmap: Bitmap): ByteBuffer {
         val imageMean = 128.0f
@@ -91,7 +90,7 @@ object FaceRecognitionUtils {
         l2Threshold: Float
     ): Pair<String, Double> {
         val avgScores = nameScoreHashmap.values.map { scores -> scores.toFloatArray().average() }
-        Log.i("FKR-CHECK", "Average score for each user : $nameScoreHashmap")
+        Log.i(TAG, "[$metricToBeUsed] Average score for each user : $nameScoreHashmap")
 
         val names = nameScoreHashmap.keys.toTypedArray()
         nameScoreHashmap.clear()
