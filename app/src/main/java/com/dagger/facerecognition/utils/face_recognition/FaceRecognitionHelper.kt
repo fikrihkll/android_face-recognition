@@ -43,10 +43,6 @@ constructor(
         this.coroutineScope = coroutineScope
         this.modelInfo = modelInfo
         cpuDispatcher = Dispatchers.Default
-        faceRecognitionHelper.setModel(modelInfo)
-        faceDetectionHelper.init()
-        faceRecognitionHelper.init()
-        isModelReady = true
     }
 
     fun recognizeFace(
@@ -58,7 +54,17 @@ constructor(
         firstFaceOnly: Boolean = false
     ) {
         coroutineScope.launch(cpuDispatcher) {
-            if (!isModelReady || registeredFace.isEmpty()) {
+            if (!isModelReady) {
+                faceRecognitionHelper.setModel(modelInfo)
+                faceDetectionHelper.init()
+                faceRecognitionHelper.init()
+                isModelReady = true
+                withContext(Dispatchers.Main) {
+                    listener.onFaceRecognized(listOf())
+                }
+                return@launch
+            }
+            if (registeredFace.isEmpty()) {
                 withContext(Dispatchers.Main) {
                     listener.onFaceRecognized(listOf())
                 }
