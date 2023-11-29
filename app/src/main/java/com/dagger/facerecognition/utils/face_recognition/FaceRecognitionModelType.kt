@@ -15,15 +15,15 @@ object FaceRecognitionModel {
     private val faceNetModel = ModelInfo(
         "FaceNet" ,
         "facenet.tflite" ,
-        0.4f ,
-        10f ,
+        0.75f ,
+        8f ,
         128 ,
         160
     )
     private val mobileFaceNetModel = ModelInfo(
         "MobileFaceNet" ,
         "mobile_face_net.tflite" ,
-        0.4f ,
+        0.6f ,
         10f ,
         192 ,
         112
@@ -31,7 +31,7 @@ object FaceRecognitionModel {
     private val faceNet512 = ModelInfo(
         "FaceNet-512" ,
         "facenet_512.tflite" ,
-        0.3f ,
+        0.6f ,
         23.56f ,
         512 ,
         160
@@ -39,15 +39,15 @@ object FaceRecognitionModel {
     private val faceNetQuantized = ModelInfo(
         "FaceNet Quantized" ,
         "facenet_int_quantized.tflite" ,
-        0.4f ,
-        10f ,
+        0.6f ,
+        8f ,
         128 ,
         160
     )
     private val faceNet512Quantized = ModelInfo(
         "FaceNet-512 Quantized" ,
         "facenet_512_int_quantized.tflite" ,
-        0.3f ,
+        0.6f ,
         23.56f ,
         512 ,
         160
