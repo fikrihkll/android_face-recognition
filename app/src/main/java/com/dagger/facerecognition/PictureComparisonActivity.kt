@@ -5,26 +5,31 @@ import android.graphics.Bitmap
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.View
+import android.widget.ArrayAdapter
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import com.dagger.facerecognition.databinding.ActivityPictureComparisonBinding
 import com.dagger.facerecognition.utils.BitmapUtils
-import com.dagger.facerecognition.viewmodels.FaceAnalyzerViewModel
+import com.dagger.facerecognition.utils.face_recognition.FaceComparisonHelper
+import com.dagger.facerecognition.utils.face_recognition.FaceComparisonResultListener
+import com.dagger.facerecognition.utils.face_recognition.FaceRecognitionModel
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import javax.inject.Inject
 import kotlin.coroutines.CoroutineContext
 
 
 @AndroidEntryPoint
 class PictureComparisonActivity : AppCompatActivity(),
     View.OnClickListener,
+    FaceComparisonResultListener,
     CoroutineScope {
 
-    private val faceAnalyzerViewModel: FaceAnalyzerViewModel by viewModels()
+    @Inject
+    lateinit var faceComparisonHelper: FaceComparisonHelper
 
     private lateinit var binding: ActivityPictureComparisonBinding
     private var image1: Bitmap? = null
@@ -46,7 +51,11 @@ class PictureComparisonActivity : AppCompatActivity(),
                         image2 = bitmap
                         binding.face2ImageView.setImageBitmap(bitmap)
                         if (image1 != null && image2 != null)
-                            faceAnalyzerViewModel.compareFace(image1!!, image2!!)
+                            faceComparisonHelper.compareWithAllModels(
+                                image1!!,
+                                image2!!,
+                                metricToBeUsed = binding.algoSpinner.selectedItem.toString()
+                            )
                     }
                 } else {
                     BitmapUtils.getBitmapFromUri(it, this@PictureComparisonActivity) { bitmap ->
@@ -65,9 +74,14 @@ class PictureComparisonActivity : AppCompatActivity(),
         binding = ActivityPictureComparisonBinding.inflate(layoutInflater)
         setContentView(binding.root)
         job = Job()
+        faceComparisonHelper.init(
+            coroutineScope = this,
+            modelInfo = FaceRecognitionModel.getModelInfo(FaceRecognitionModel.Type.FACE_NET),
+            listener = this
+        )
+        setupSpinner()
 
         binding.imagePickerButton.setOnClickListener(this)
-        observerLiveData()
     }
 
     override val coroutineContext: CoroutineContext
@@ -81,15 +95,29 @@ class PictureComparisonActivity : AppCompatActivity(),
         }
     }
 
+    override fun onComparingFinished(result: String) {
+        binding.resultTextView.text = result
+    }
+
+    override fun onImageCropped(image1: Bitmap, image2: Bitmap) {
+        binding.face1ImageView.setImageBitmap(image1)
+        binding.face2ImageView.setImageBitmap(image2)
+    }
+
     override fun onDestroy() {
         job.cancel()
         super.onDestroy()
     }
 
-    private fun observerLiveData() {
-        faceAnalyzerViewModel.faceComparisonLiveData.observe(this) {
-            binding.resultTextView.text = it
-        }
+    private fun setupSpinner() {
+        val adapter = ArrayAdapter(
+            this,
+            android.R.layout.simple_spinner_item,
+            listOf("l2", "cosine"))
+
+        adapter.setDropDownViewResource(
+            android.R.layout.simple_spinner_dropdown_item)
+        binding.algoSpinner.adapter = adapter
     }
 
     private fun pickImage() {
