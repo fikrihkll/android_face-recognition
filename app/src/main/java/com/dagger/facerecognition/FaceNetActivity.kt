@@ -131,7 +131,7 @@ class FaceNetActivity : AppCompatActivity(),
 
     override fun onCheckedChanged(view: CompoundButton?, isChecked: Boolean) {
         when (view?.id) {
-            R.id.registerButton -> {
+            R.id.registerSwitch -> {
                 binding.registerButton.isVisible = isChecked
             }
         }
