@@ -13,6 +13,7 @@ import android.provider.MediaStore
 import android.util.Log
 import android.util.Size
 import android.view.View
+import android.widget.CompoundButton
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -54,7 +55,8 @@ class FaceNetActivity : AppCompatActivity(),
     View.OnLongClickListener,
     CameraFrameListener,
     FaceRecognitionResultListener,
-    CoroutineScope {
+    CoroutineScope,
+    CompoundButton.OnCheckedChangeListener {
 
     private val mainViewModel: MainViewModel by viewModels()
 
@@ -63,13 +65,13 @@ class FaceNetActivity : AppCompatActivity(),
     private lateinit var binding: ActivityMainBinding
     private lateinit var cameraExecutor: ExecutorService
     private lateinit var job: Job
+    private lateinit var frameAnalyser: FrameAnalyser
 
     private var faceRecognitionModel = FaceRecognitionModel.getModelInfo(FaceRecognitionModel.Type.FACE_NET)
     private var preview: Preview? = null
     private var camera: Camera? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var imageCapture: ImageCapture? = null
-    private lateinit var frameAnalyser: FrameAnalyser
     private val REQUIRED_PERMISSIONS = mutableListOf(
         Manifest.permission.CAMERA,
     )
@@ -84,23 +86,16 @@ class FaceNetActivity : AppCompatActivity(),
 
         job = Job()
         cameraExecutor = Executors.newSingleThreadExecutor()
-        runOnUiThread {
-            faceRecognitionHelper.init(
-                coroutineScope = this,
-                modelInfo = faceRecognitionModel,
-                listener = this
-            )
-        }
+        faceRecognitionHelper.init(
+            coroutineScope = this,
+            modelInfo = faceRecognitionModel,
+            listener = this
+        )
 
+        binding.comparisonButton.setOnClickListener(this)
         binding.registerButton.setOnClickListener(this)
         binding.registerButton.setOnLongClickListener(this)
-        binding.registerSwitch.setOnCheckedChangeListener { _, isChecked ->
-            binding.registerButton.isVisible = isChecked
-        }
-        binding.registerSwitch.setOnLongClickListener {
-            startActivity(Intent(this@FaceNetActivity, PictureComparisonActivity::class.java))
-            true
-        }
+        binding.registerSwitch.setOnCheckedChangeListener(this)
 
         mainViewModel.getFaceList()
 
@@ -128,6 +123,17 @@ class FaceNetActivity : AppCompatActivity(),
             R.id.registerButton -> {
                 takePicture()
             }
+            R.id.comparisonButton -> {
+                startActivity(Intent(this@FaceNetActivity, PictureComparisonActivity::class.java))
+            }
+        }
+    }
+
+    override fun onCheckedChanged(view: CompoundButton?, isChecked: Boolean) {
+        when (view?.id) {
+            R.id.comparisonButton -> {
+                binding.registerButton.isVisible = isChecked
+            }
         }
     }
 
@@ -149,7 +155,6 @@ class FaceNetActivity : AppCompatActivity(),
     }
 
     override fun onFaceRecognized(result: List<FacePrediction>) {
-        Log.w("FKR-CHECK", "FACE REC")
         frameAnalyser.setProcessingDone()
 
         if (result.isNotEmpty()) {
@@ -326,4 +331,5 @@ class FaceNetActivity : AppCompatActivity(),
             this, it
         ) == PackageManager.PERMISSION_GRANTED
     }
+
 }
