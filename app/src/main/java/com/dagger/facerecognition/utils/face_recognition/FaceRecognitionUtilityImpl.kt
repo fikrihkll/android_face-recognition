@@ -52,11 +52,12 @@ constructor(
 
     override fun init() {
         val interpreterOptions = Interpreter.Options().apply {
-            if (CompatibilityList().isDelegateSupportedOnThisDevice) {
-                addDelegate(GpuDelegate())
-            } else {
-                setNumThreads(4)
-            }
+//            if (CompatibilityList().isDelegateSupportedOnThisDevice) {
+//                addDelegate(GpuDelegate())
+//            } else {
+//                setNumThreads(4)
+//            }
+            setNumThreads(4)
             setUseXNNPACK(true)
             setUseNNAPI(true)
         }

@@ -42,6 +42,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -77,7 +78,7 @@ class FaceNetActivity : AppCompatActivity(),
     )
 
     override val coroutineContext: CoroutineContext
-        get() = Dispatchers.IO + job
+        get() = Dispatchers.Main + job
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,11 +87,12 @@ class FaceNetActivity : AppCompatActivity(),
 
         job = Job()
         cameraExecutor = Executors.newSingleThreadExecutor()
-        faceRecognitionHelper.init(
-            coroutineScope = this,
-            modelInfo = faceRecognitionModel,
-            listener = this
-        )
+        launch {
+            faceRecognitionHelper.init(
+                modelInfo = faceRecognitionModel,
+                listener = this@FaceNetActivity
+            )
+        }
 
         binding.comparisonButton.setOnClickListener(this)
         binding.registerButton.setOnClickListener(this)
@@ -143,7 +145,7 @@ class FaceNetActivity : AppCompatActivity(),
             return
         }
 
-        runOnUiThread {
+        launch {
             faceRecognitionHelper.recognizeFace(
                 frameBitmap = image,
                 registeredFace = mainViewModel.faceList.map { Pair(it.title, it.vector[0]) },
@@ -323,7 +325,10 @@ class FaceNetActivity : AppCompatActivity(),
     }
 
     private fun register(bitmap: Bitmap) {
-        faceRecognitionHelper.getFaceVector(bitmap)
+        Log.i(FaceRecognitionHelper.TAG,  "Prior to process of embedding ${Thread.currentThread().name}")
+        launch {
+            faceRecognitionHelper.getFaceVector(bitmap)
+        }
     }
 
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {

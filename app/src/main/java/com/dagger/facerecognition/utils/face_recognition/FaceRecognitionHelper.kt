@@ -27,29 +27,28 @@ constructor(
         const val TAG = "FaceRecognitionHelper"
     }
 
-    private lateinit var coroutineScope: CoroutineScope
     private lateinit var cpuDispatcher: CoroutineDispatcher
     private lateinit var listener: FaceRecognitionResultListener
     private var isModelReady = false
     private lateinit var modelInfo: ModelInfo
 
-    fun init(
-        coroutineScope: CoroutineScope,
+    suspend fun init(
         modelInfo: ModelInfo,
         listener: FaceRecognitionResultListener
     ) {
         isModelReady = false
         this.listener = listener
-        this.coroutineScope = coroutineScope
         this.modelInfo = modelInfo
         cpuDispatcher = Dispatchers.Default
-        faceRecognitionHelper.setModel(modelInfo)
-        faceDetectionHelper.init()
-        faceRecognitionHelper.init()
+        withContext(cpuDispatcher) {
+            faceRecognitionHelper.setModel(modelInfo)
+            faceDetectionHelper.init()
+            faceRecognitionHelper.init()
+        }
         isModelReady = true
     }
 
-    fun recognizeFace(
+    suspend fun recognizeFace(
         metricToBeUsed: String = "l2",
         frameBitmap: Bitmap,
         registeredFace: List<Pair<String,FloatArray>>,
@@ -57,18 +56,18 @@ constructor(
         l2Threshold: Float,
         firstFaceOnly: Boolean = false
     ) {
-        coroutineScope.launch(cpuDispatcher) {
+        withContext(cpuDispatcher) {
             if (!isModelReady) {
                 withContext(Dispatchers.Main) {
                     listener.onFaceRecognized(listOf())
                 }
-                return@launch
+                return@withContext
             }
             if (registeredFace.isEmpty()) {
                 withContext(Dispatchers.Main) {
                     listener.onFaceRecognized(listOf())
                 }
-                return@launch
+                return@withContext
             }
 
             val inputImage = InputImage.fromBitmap(frameBitmap , 0)
@@ -77,7 +76,7 @@ constructor(
                 withContext(Dispatchers.Main) {
                     listener.onFaceRecognized(listOf())
                 }
-                return@launch
+                return@withContext
             }
 
             val t1 = System.currentTimeMillis()
@@ -87,12 +86,13 @@ constructor(
             for (face in finalFaces) {
                 try {
                     val croppedBitmap = BitmapUtils.cropImageFaceBitmapWithoutResize(frameBitmap, face.boundingBox)
-                    val subject = withContext(Dispatchers.Main) {
+                    val subject = withContext(cpuDispatcher) {
                         faceRecognitionHelper.getFaceEmbedding(croppedBitmap)[0]
                     }
 
                     val nameScoreHashmap = FaceRecognitionUtils.calculateScore(subject = subject, faceList = registeredFace)
                     var strFinal = """
+                                ${modelInfo.name}
                                 Average score for each user : $nameScoreHashmap
                             """.trimIndent()
 
@@ -124,7 +124,7 @@ constructor(
         }
     }
 
-    fun getFaceVector(
+    suspend fun getFaceVector(
         frameBitmap: Bitmap,
         firstFaceOnly: Boolean = true
     ) {
@@ -132,7 +132,7 @@ constructor(
             listener.onFaceRecognized(listOf())
             return
         }
-        coroutineScope.launch(cpuDispatcher) {
+        withContext(cpuDispatcher) {
             val inputImage = InputImage.fromBitmap(frameBitmap , 0)
             val faces = faceDetectionHelper.findFace(inputImage)
             val t1 = System.currentTimeMillis()
@@ -142,7 +142,7 @@ constructor(
             for (face in finalFaces) {
                 try {
                     BitmapUtils.cropImageFaceBitmapWithoutResize(frameBitmap, face)?.let {
-                        val subject = withContext(Dispatchers.Main) {
+                        val subject = withContext(cpuDispatcher) {
                             faceRecognitionHelper.getFaceEmbedding(it)
                         }
                         recognitions.add(Recognition(id = UUID.randomUUID().toString(), title = "", vector = subject))
